@@ -5,6 +5,8 @@ var crio = require("cheerio"),
     url = require("url"),
     favimg = expr();
 
+// gmag = gmag.subClass({ imageMagick: true });
+
 function download(url, callback) {
     console.log("GET " + url);
     http.get(url, function (res) {
@@ -107,4 +109,4 @@ favimg.get("/favimg", function (req, res) {
     }
 });
 
-favimg.listen(8888);
+favimg.listen(63888);
