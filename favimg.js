@@ -2,6 +2,7 @@ var crio = require("cheerio"),
     expr = require("express"),
     gmag = require("gm"),
     http = require("http"),
+    url = require("url"),
     favimg = expr();
 
 function download(url, callback) {
@@ -46,6 +47,8 @@ favimg.get("/favimg", function (req, res) {
     var img = [null, 0];
 
     if (req.query.url !== undefined) {
+        var u = url.parse(req.query.url);
+
         // Download given webpage...
         download(req.query.url, function (data) {
             // ...create DOM of webpage
@@ -55,8 +58,15 @@ favimg.get("/favimg", function (req, res) {
             // ...seek every image
             $("img").each(function (idx, el) {
                 var src = $(el).attr("src");
-                if (src.indexOf("http://") == 0 && src.indexOf("https://") == 0) {
-                    src = req.query.url + src;
+                // Check if it is a relative URL
+                if (src.indexOf("http://") != 0) {
+                    if (src.indexOf("/") == 0) {
+                        // Starts with root, e.g. /img/foo.jpg
+                        src = u.protocol + "//" + u.hostname + src;
+                    } else {
+                        // src is something like img/foo.jpg
+                        src = req.query.url + src;
+                    } // TODO: handle ../img/foo.jpg
                 }
                 imgs.push(src);
             });
@@ -72,15 +82,20 @@ favimg.get("/favimg", function (req, res) {
 
             $(imgs).each(function (idx, src) {
                 // Send request for every image to determine size
-                console.log("GET " + src);
+                console.log("GET [" + idx + "] " + src);
                 http.get(src,
                     function (res) {
                         var g = gmag(res);
                         g.size(function (err, size) {
-                            var area = size.width * size.height;
-                            if (img[1] < area) {
-                                img = [src, area];
+                            if (err) {
+                                console.log("Could not process " + src);
+                            } else {
+                                var area = size.width * size.height;
+                                if (img[1] < area) {
+                                    img = [src, area];
+                                }
                             }
+
                             num_requests.set(num_requests.get() + 1);
                         });
                     });
