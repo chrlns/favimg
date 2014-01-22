@@ -46,7 +46,7 @@ function future(value, callback) {
 }
 
 favimg.get("/favimg", function (req, res) {
-    var img = [null, 0];
+    var img = ["http://dev.appnaut.de/nullcat.jpg", 0];
 
     if (req.query.url !== undefined) {
         var u = url.parse(req.query.url);
