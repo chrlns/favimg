@@ -1,11 +1,18 @@
+var DEBUG = true;
 var crio = require("cheerio"),
     expr = require("express"),
     gmag = require("gm"),
     http = require("http"),
     url = require("url"),
-    favimg = expr();
+    favimg = expr(),
+    out = function (msg) {};
 
 // gmag = gmag.subClass({ imageMagick: true });
+
+if (DEBUG) {
+    require("longjohn");
+    out = console.log;
+}
 
 function download(url, callback) {
     console.log("GET " + url);
@@ -41,12 +48,32 @@ function future(value, callback) {
     this.setTarget = function (new_target) {
         this.target = new_target;
     };
+}
 
-    return this;
+function fullPath(src, url, req) {
+    // Check if it is a relative URL
+    if (src.indexOf("http://") != 0) {
+        if (src.indexOf("/") == 0) {
+            // Starts with root, e.g. /img/foo.jpg
+            src = url.protocol + "//" + url.hostname + src;
+        } else {
+            // src is something like img/foo.jpg
+            src = req.query.url + src;
+        } // TODO: handle ../img/foo.jpg
+    }
+    return src;
 }
 
 favimg.get("/favimg", function (req, res) {
-    var img = ["http://dev.appnaut.de/nullcat.jpg", 0];
+    var img = ["http://dev.appnaut.de/nullcat.jpg", 0, null, "image/jpeg"];
+
+    var timeout_wrapper = function (req) {
+        return function () {
+            // do some logging, cleaning, etc. depending on req
+            out("Request timeout");
+            req.abort();
+        };
+    };
 
     if (req.query.url !== undefined) {
         var u = url.parse(req.query.url);
@@ -60,47 +87,68 @@ favimg.get("/favimg", function (req, res) {
             // ...seek every image
             $("img").each(function (idx, el) {
                 var src = $(el).attr("src");
-                // Check if it is a relative URL
-                if (src.indexOf("http://") != 0) {
-                    if (src.indexOf("/") == 0) {
-                        // Starts with root, e.g. /img/foo.jpg
-                        src = u.protocol + "//" + u.hostname + src;
-                    } else {
-                        // src is something like img/foo.jpg
-                        src = req.query.url + src;
-                    } // TODO: handle ../img/foo.jpg
-                }
+                src = fullPath(src, u, req);
                 imgs.push(src);
             });
 
             console.log("Found " + imgs.length + " possible images");
-            var num_requests = future(imgs.length, function () {
-                res.writeHead(301, {
-                    "Location": img[0]
-                });
+            var num_requests = new future(imgs.length, function () {
+                if (img[2] == null) {
+                    res.writeHead(301, {
+                        "Location": img[0]
+                    });
+                } else {
+                    var buf = new Buffer(img[2]);
+                    res.setHeader("Content-Type", img[3]);
+                    res.setHeader("Content-Length", buf.length());
+                    res.write(buf);
+                    out("Sent " + img[2].length);
+                }
                 res.end();
             });
             num_requests.set(0);
 
-            $(imgs).each(function (idx, src) {
+            $(imgs).each(function (idx, img_src) {
                 // Send request for every image to determine size
-                console.log("GET [" + idx + "] " + src);
-                http.get(src,
+                out("GET [" + idx + "] " + img_src);
+
+                var request = http.get(img_src,
                     function (res) {
-                        var g = gmag(res);
-                        g.size(function (err, size) {
+                        var data = null; //new Buffer(res.headers["content-length"]);
+                        res.on("data", function (chunk) {
+                            //data.write(chunk, data.length());
+                            // reset timeout
+                            clearTimeout(timeout);
+                            timeout = setTimeout(fn, 5000);
+                        }).on("end", function () {
+                            // clear timeout
+                            clearTimeout(timeout);
+                        }).on("error", function (err) {
+                            // clear timeout
+                            clearTimeout(timeout);
+                            out("Got error: " + err.message);
+                        });
+
+                        var gm = gmag(res);
+                        gm.size(function (err, size) {
                             if (err) {
-                                console.log("Could not process " + src);
+                                out("Could not process " + img_src);
                             } else {
                                 var area = size.width * size.height;
                                 if (img[1] < area) {
-                                    img = [src, area];
+                                    img = [img_src, area, null, res.headers["content-type"]];
                                 }
                             }
 
                             num_requests.set(num_requests.get() + 1);
                         });
                     });
+
+                request.on("error", function (err) {
+                    out("Connection to " + img_src + " terminated: " + err);
+                });
+                var fn = timeout_wrapper(request);
+                var timeout = setTimeout(fn, 10000);
             });
         });
     } else {
