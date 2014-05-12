@@ -16,11 +16,9 @@
   "scripts": {
   },
   "dependencies": {
-    "cheerio": "0.1.0",
-    "express": "0.1.0",
-    "gm": "0.1.0",
-    "http": "0.1.0",
-    "url": "0.1.0"
+    "cheerio": "0.16.0",
+    "express": "4.2.0",
+    "gm": "1.16.0"
   },
   "license": "Apache-2.0"
 }
